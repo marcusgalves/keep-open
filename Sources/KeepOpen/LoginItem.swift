@@ -43,6 +43,29 @@ final class LoginItem {
         refresh()
     }
 
+    /// Runs when this copy was not started by launchd although the agent is on.
+    /// That means launchd could not spawn the bundle (typically after a rebuild
+    /// changed the ad-hoc signature), so register again for the current binary;
+    /// launchd then starts its own copy, which takes over from this one.
+    func repairIfNeeded() {
+        guard isAvailable,
+              ProcessInfo.processInfo.environment[InstanceGuard.launchdEnvironmentKey] != "1",
+              service.status == .enabled else { return }
+        // Right after the binary changes, launchd may still hold the old code
+        // signature and fail the spawn (OS_REASON_CODESIGNING). When launchd's copy
+        // starts, it terminates this one; while this copy is alive, try again.
+        Task { @MainActor in
+            for attempt in 1...4 {
+                log.notice("Agent enabled but not running under launchd; registering again (\(attempt))")
+                try? await service.unregister()
+                try? await Task.sleep(for: .seconds(1))
+                setEnabled(true)
+                try? await Task.sleep(for: .seconds(Double(4 * attempt)))
+            }
+            log.error("launchd did not take over; this copy keeps running without crash restart")
+        }
+    }
+
     func openSystemSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }

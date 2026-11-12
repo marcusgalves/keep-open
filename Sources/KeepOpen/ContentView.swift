@@ -27,6 +27,7 @@ struct ContentView: View {
             loginItem.refresh()
             monitor?.refreshStatus()
         }
+        .background(FadingWindow())
     }
 
     // MARK: Header

@@ -34,11 +34,14 @@ cd keep-open
 ./scripts/install.sh   # builds, copies to /Applications and opens it
 ```
 
-`./scripts/build-app.sh` only builds `build/Keep Open.app` (universal, ad-hoc signed).
+`./scripts/build-app.sh` only builds `build/Keep Open.app` (universal binary).
 `swift run` works for UI work, but *Open at login* needs the app bundle.
 
-Since the build is ad-hoc signed, Gatekeeper may ask for confirmation the first
-time if you copy the app to another Mac.
+Signing: the script uses your first *Apple Development* or *Developer ID Application*
+identity from the keychain, and falls back to ad-hoc (`SIGN_IDENTITY=-` forces it).
+A stable identity matters with *Open at login*: an ad-hoc signature changes on every
+build, launchd rejects the new binary, and Keep Open has to register again (it does
+so by itself when opened, which can take about 30 seconds).
 
 ## Configuration
 
