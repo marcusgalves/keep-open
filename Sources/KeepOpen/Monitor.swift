@@ -45,10 +45,22 @@ final class Monitor {
 
     /// Checks every enabled app and opens the ones that are not running.
     func sweep() {
+        healBundleIdentifiers()
         refreshStatus()
         guard !store.config.isPaused else { return }
         for app in store.enabledApps where !store.running.contains(app.id) && !inFlight.contains(app.id) {
             open(app, reason: "not running")
+        }
+    }
+
+    /// Re-reads on-disk Info.plist for monitored apps and updates stale stored bundle IDs.
+    func healBundleIdentifiers() {
+        for app in store.config.apps {
+            guard let newID = BundleInfo.read(at: URL(fileURLWithPath: app.path))?.bundleIdentifier,
+                  newID != app.bundleIdentifier else { continue }
+            let oldID = app.bundleIdentifier ?? "nil"
+            log.notice("\(app.name, privacy: .public): bundle ID changed \(oldID, privacy: .public) -> \(newID, privacy: .public)")
+            store.setBundleIdentifier(newID, for: app.id)
         }
     }
 
@@ -93,31 +105,48 @@ final class Monitor {
         let processNames = needsProcesses ? ProcessScanner.executableNames() : []
 
         var running = Set<UUID>()
-        for app in store.config.apps {
-            let isRunning: Bool
-            if let processName = app.watchedProcessName {
-                isRunning = processNames.contains(processName)
-            } else if let bundleID = app.bundleIdentifier {
-                isRunning = bundleIDs.contains(bundleID)
-            } else {
-                isRunning = bundlePaths.contains(URL(fileURLWithPath: app.path).standardizedFileURL.path)
-            }
-            if isRunning { running.insert(app.id) }
+        for app in store.config.apps where Self.isRunning(
+            app, bundleIDs: bundleIDs, bundlePaths: bundlePaths, processNames: processNames
+        ) {
+            running.insert(app.id)
         }
         if running != store.running { store.running = running }
     }
 
     private func handleTermination(bundleID: String?, url: URL?) {
         refreshStatus()
-        let path = url?.standardizedFileURL.path
+        let bundleIDs: Set<String> = bundleID.map { [$0] } ?? []
+        let bundlePaths: Set<String> = url.map { [$0.standardizedFileURL.path] } ?? []
         let watched = store.enabledApps.contains { app in
-            (bundleID != nil && app.bundleIdentifier == bundleID)
-                || (path != nil && URL(fileURLWithPath: app.path).standardizedFileURL.path == path)
+            Self.matchesIdentity(app, bundleIDs: bundleIDs, bundlePaths: bundlePaths)
         }
         guard watched else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + relaunchDelay) { [weak self] in
             self?.sweep()
         }
+    }
+
+    static func matchesIdentity(
+        _ app: MonitoredApp,
+        bundleIDs: Set<String>,
+        bundlePaths: Set<String>
+    ) -> Bool {
+        if let bundleID = app.bundleIdentifier, bundleIDs.contains(bundleID) {
+            return true
+        }
+        return bundlePaths.contains(MonitoredApp.normalizedPath(app.path))
+    }
+
+    static func isRunning(
+        _ app: MonitoredApp,
+        bundleIDs: Set<String>,
+        bundlePaths: Set<String>,
+        processNames: Set<String>
+    ) -> Bool {
+        if let processName = app.watchedProcessName {
+            return processNames.contains(processName)
+        }
+        return matchesIdentity(app, bundleIDs: bundleIDs, bundlePaths: bundlePaths)
     }
 
     private func rescheduleIfNeeded() {

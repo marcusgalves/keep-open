@@ -1,5 +1,32 @@
 import AppKit
 
+/// Reads bundle metadata straight from `Contents/Info.plist` on disk.
+/// Foundation's `Bundle(url:)` caches instances per path for the process lifetime,
+/// hiding changes after an in-place app update.
+enum BundleInfo {
+    struct Metadata {
+        let bundleIdentifier: String?
+        let name: String?
+    }
+
+    static func read(at appURL: URL) -> Metadata? {
+        let plistURL = appURL.appendingPathComponent("Contents/Info.plist", isDirectory: false)
+        guard let data = try? Data(contentsOf: plistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return nil }
+
+        let id = nonEmpty(plist["CFBundleIdentifier"] as? String)
+        let name = nonEmpty(plist["CFBundleDisplayName"] as? String)
+            ?? nonEmpty(plist["CFBundleName"] as? String)
+        return Metadata(bundleIdentifier: id, name: name)
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
+    }
+}
+
 /// One app that Keep Open reopens when it is not running.
 struct MonitoredApp: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
@@ -14,12 +41,14 @@ struct MonitoredApp: Codable, Identifiable, Hashable {
     var isEnabled: Bool = true
 
     init(url: URL) {
-        let bundle = Bundle(url: url)
-        self.name = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-            ?? bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
-            ?? url.deletingPathExtension().lastPathComponent
+        let info = BundleInfo.read(at: url)
+        self.name = info?.name ?? url.deletingPathExtension().lastPathComponent
         self.path = url.path
-        self.bundleIdentifier = bundle?.bundleIdentifier
+        self.bundleIdentifier = info?.bundleIdentifier
+    }
+
+    static func normalizedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
     /// The bundle URL, falling back to a Launch Services lookup if the app moved.
