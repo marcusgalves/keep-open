@@ -3,3 +3,8 @@ build/
 .swiftpm/
 .DS_Store
 *.xcodeproj
+
+# Maestri specs
+!.maestri/
+.maestri/*
+!.maestri/specs/
