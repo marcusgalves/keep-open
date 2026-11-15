@@ -4,7 +4,7 @@ build/
 .DS_Store
 *.xcodeproj
 
-# Maestri specs
+# Maestri: version task specs only
 !.maestri/
 .maestri/*
 !.maestri/specs/
