@@ -48,10 +48,19 @@ final class AppStore {
         update { config in
             for url in urls {
                 let app = MonitoredApp(url: url)
-                let duplicate = config.apps.contains {
-                    $0.path == app.path || ($0.bundleIdentifier != nil && $0.bundleIdentifier == app.bundleIdentifier)
+                let path = MonitoredApp.normalizedPath(app.path)
+                if let index = config.apps.firstIndex(where: {
+                    MonitoredApp.normalizedPath($0.path) == path
+                }) {
+                    if let bundleIdentifier = app.bundleIdentifier {
+                        config.apps[index].bundleIdentifier = bundleIdentifier
+                    }
+                    continue
                 }
-                if !duplicate { config.apps.append(app) }
+                let sameID = app.bundleIdentifier != nil && config.apps.contains {
+                    $0.bundleIdentifier == app.bundleIdentifier
+                }
+                if !sameID { config.apps.append(app) }
             }
         }
     }
@@ -77,6 +86,15 @@ final class AppStore {
             guard let index = config.apps.firstIndex(where: { $0.id == id }) else { return }
             let trimmed = name?.trimmingCharacters(in: .whitespaces) ?? ""
             config.apps[index].processName = trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    func setBundleIdentifier(_ bundleIdentifier: String?, for id: UUID) {
+        guard let index = config.apps.firstIndex(where: { $0.id == id }),
+              config.apps[index].bundleIdentifier != bundleIdentifier else { return }
+        update { config in
+            guard let index = config.apps.firstIndex(where: { $0.id == id }) else { return }
+            config.apps[index].bundleIdentifier = bundleIdentifier
         }
     }
 

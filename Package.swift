@@ -8,7 +8,12 @@ let package = Package(
         .executableTarget(
             name: "KeepOpen",
             path: "Sources/KeepOpen"
-        )
+        ),
+        .testTarget(
+            name: "KeepOpenTests",
+            dependencies: ["KeepOpen"],
+            path: "Tests/KeepOpenTests"
+        ),
     ],
     swiftLanguageModes: [.v5]
 )
